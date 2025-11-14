@@ -11,8 +11,7 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js",
-    "prepare": "npm run build"
+    "dev": "tsc && node dist/index.js"
   },
   "keywords": [
     "mcp",
