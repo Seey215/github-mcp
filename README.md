@@ -69,6 +69,22 @@ npx github-mcp
 
 🎉 **Done!** Now your AI assistant can operate GitHub!
 
+### Alternative Transport: Streamable HTTP (Hono)
+
+Need an HTTP/SSE endpoint instead of STDIO? Start the Hono-powered Streamable HTTP server:
+
+```bash
+npx github-mcp streamableHttp
+```
+
+Or enable it via environment variables:
+
+```bash
+MCP_TRANSPORT=streamableHttp STREAMABLE_HTTP_PORT=3001 npx github-mcp
+```
+
+The Hono server exposes `/mcp` for POST/GET/DELETE requests, automatically handles CORS, and keeps SSE streams open for real-time messaging. It still reuses the same `GitHubMCPServer` logic from STDIO, so your tools and configuration behave identically.
+
 > **Tip**: You can start the server even without a Token, authentication is only required when calling GitHub APIs.
 
 ---

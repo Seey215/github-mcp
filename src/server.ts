@@ -163,8 +163,15 @@ export class GitHubMCPServer {
    * Connect to transport layer and start server
    * @param transport MCP transport layer instance
    */
-  async connect(transport: StdioServerTransport): Promise<void> {
+  async connect(transport: Parameters<McpServer['connect']>[0]): Promise<void> {
     await this.server.connect(transport);
+  }
+
+  /**
+   * Gracefully shutdown the MCP server instance
+   */
+  async close(): Promise<void> {
+    await this.server.close();
   }
 }
 
