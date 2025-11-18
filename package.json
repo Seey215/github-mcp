@@ -1,5 +1,5 @@
 {
-  "name": "@seey215/github-mcp",
+  "name": "github-mcp",
   "version": "0.0.1",
   "description": "GitHub MCP Server with OAuth support for Issue management",
   "type": "module",
