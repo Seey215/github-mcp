@@ -4,24 +4,42 @@
   "description": "GitHub MCP Server with OAuth support for Issue management",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "github-mcp": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js"
+    "dev": "tsc && node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
     "github",
     "oauth",
     "issues",
-    "model-context-protocol"
+    "model-context-protocol",
+    "github-api",
+    "mcp-server",
+    "typescript"
   ],
-  "author": "Seey215",
+  "author": {
+    "name": "Seey215"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Seey215/github-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Seey215/github-mcp/issues"
+  },
+  "homepage": "https://github.com/Seey215/github-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "dotenv": "^16.3.1",

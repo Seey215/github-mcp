@@ -1,0 +1,136 @@
+<svg width="800" height="200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200">
+  <defs>
+    <!-- 渐变定义 -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0D1117;stop-opacity:1">
+        <animate attributeName="stop-color" values="#0D1117;#161B22;#0D1117" dur="4s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" style="stop-color:#161B22;stop-opacity:1">
+        <animate attributeName="stop-color" values="#161B22;#0D1117;#161B22" dur="4s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#58A6FF;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#79C0FF;stop-opacity:1"/>
+    </linearGradient>
+    
+    <!-- 发光效果 -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- 脉冲动画 -->
+    <radialGradient id="pulseGradient">
+      <stop offset="0%" style="stop-color:#58A6FF;stop-opacity:0.3">
+        <animate attributeName="stop-opacity" values="0.3;0.6;0.3" dur="2s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" style="stop-color:#58A6FF;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="800" height="200" fill="url(#bgGradient)" rx="10"/>
+  
+  <!-- 脉冲圆圈 -->
+  <circle cx="180" cy="100" r="60" fill="url(#pulseGradient)">
+    <animate attributeName="r" values="60;70;60" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- GitHub Octocat 简化图标 -->
+  <g transform="translate(180, 100)" filter="url(#glow)">
+    <!-- 章鱼猫头部 -->
+    <circle cx="0" cy="0" r="35" fill="#F0F6FC" opacity="0.95"/>
+    
+    <!-- 左耳 -->
+    <ellipse cx="-25" cy="-20" rx="12" ry="18" fill="#F0F6FC" opacity="0.95"/>
+    
+    <!-- 右耳 -->
+    <ellipse cx="25" cy="-20" rx="12" ry="18" fill="#F0F6FC" opacity="0.95"/>
+    
+    <!-- 左眼 -->
+    <circle cx="-12" cy="-5" r="5" fill="#0D1117"/>
+    
+    <!-- 右眼 -->
+    <circle cx="12" cy="-5" r="5" fill="#0D1117"/>
+    
+    <!-- 嘴巴 -->
+    <path d="M -8 8 Q 0 12 8 8" stroke="#0D1117" stroke-width="2" fill="none"/>
+    
+    <!-- 身体波浪动画 -->
+    <path d="M -20 30 Q -25 40 -20 50" stroke="#F0F6FC" stroke-width="3" fill="none" opacity="0.8">
+      <animate attributeName="d" 
+               values="M -20 30 Q -25 40 -20 50;M -20 30 Q -22 40 -20 50;M -20 30 Q -25 40 -20 50" 
+               dur="1.5s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 20 30 Q 25 40 20 50" stroke="#F0F6FC" stroke-width="3" fill="none" opacity="0.8">
+      <animate attributeName="d" 
+               values="M 20 30 Q 25 40 20 50;M 20 30 Q 22 40 20 50;M 20 30 Q 25 40 20 50" 
+               dur="1.5s" repeatCount="indefinite"/>
+    </path>
+  </g>
+  
+  <!-- 连接线动画 (MCP 协议概念) -->
+  <g opacity="0.6">
+    <!-- 左侧连接点 -->
+    <circle cx="80" cy="100" r="4" fill="#58A6FF">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- 左侧连接线 -->
+    <line x1="80" y1="100" x2="145" y2="100" stroke="#58A6FF" stroke-width="2" stroke-dasharray="5,5">
+      <animate attributeName="stroke-dashoffset" values="10;0" dur="1s" repeatCount="indefinite"/>
+    </line>
+    
+    <!-- 右侧连接线 -->
+    <line x1="215" y1="100" x2="280" y2="100" stroke="#58A6FF" stroke-width="2" stroke-dasharray="5,5">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="1s" repeatCount="indefinite"/>
+    </line>
+    
+    <!-- 右侧连接点 -->
+    <circle cx="280" cy="100" r="4" fill="#58A6FF">
+      <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- 数据流动粒子 -->
+    <circle cx="80" cy="100" r="3" fill="#79C0FF">
+      <animate attributeName="cx" values="80;145;215;280" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;0" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+  
+  <!-- 主标题 GitHub -->
+  <text x="320" y="90" font-family="'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif" 
+        font-size="48" font-weight="700" fill="url(#textGradient)" filter="url(#glow)">
+    GitHub
+  </text>
+  
+  <!-- 副标题 MCP -->
+  <text x="320" y="130" font-family="'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif" 
+        font-size="36" font-weight="600" fill="#8B949E">
+    MCP Server
+  </text>
+  
+  <!-- 装饰性代码符号 -->
+  <g opacity="0.3">
+    <text x="650" y="60" font-family="'Courier New', monospace" font-size="24" fill="#58A6FF">
+      &lt;/&gt;
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite"/>
+    </text>
+    <text x="720" y="140" font-family="'Courier New', monospace" font-size="20" fill="#58A6FF">
+      { }
+      <animate attributeName="opacity" values="0.6;0.3;0.6" dur="3s" repeatCount="indefinite"/>
+    </text>
+  </g>
+  
+  <!-- Model Context Protocol 小字标注 -->
+  <text x="320" y="155" font-family="'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif" 
+        font-size="12" fill="#58A6FF" opacity="0.7">
+    Model Context Protocol Integration
+  </text>
+</svg>
+
