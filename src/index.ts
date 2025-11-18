@@ -1,364 +1,116 @@
 #!/usr/bin/env node
-
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
-} from "@modelcontextprotocol/sdk/types.js";
-import { Octokit } from "@octokit/rest";
+import { z } from 'zod';
 import dotenv from "dotenv";
 
-// Load environment variables
 dotenv.config();
 
-// GitHub OAuth token from environment
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GITHUB_ACCESS_TOKEN;
-
-if (!GITHUB_TOKEN) {
-  console.error("Error: GITHUB_TOKEN or GITHUB_ACCESS_TOKEN environment variable is required");
+const GITHUB_ACCESS_TOKEN = process.env.GITHUB_ACCESS_TOKEN;
+if (!GITHUB_ACCESS_TOKEN) {
+  console.error("Error: GITHUB_ACCESS_TOKEN environment variable is required");
   process.exit(1);
 }
 
-// Initialize Octokit with OAuth token
-const octokit = new Octokit({
-  auth: GITHUB_TOKEN,
-});
+const GITHUB_API_BASE = 'https://api.github.com';
+const GITHUB_API_VERSION = '2022-11-28';
 
-// Define available tools
-const TOOLS: Tool[] = [
-  {
-    name: "list_issues",
-    description: "List issues in a GitHub repository with optional filters",
-    inputSchema: {
-      type: "object",
-      properties: {
-        owner: {
-          type: "string",
-          description: "Repository owner (username or organization)",
-        },
-        repo: {
-          type: "string",
-          description: "Repository name",
-        },
-        state: {
-          type: "string",
-          enum: ["open", "closed", "all"],
-          description: "Filter by issue state (default: open)",
-        },
-        labels: {
-          type: "string",
-          description: "Comma-separated list of label names to filter by",
-        },
-        per_page: {
-          type: "number",
-          description: "Number of results per page (max 100, default 30)",
-        },
-        page: {
-          type: "number",
-          description: "Page number for pagination (default 1)",
-        },
-      },
-      required: ["owner", "repo"],
-    },
-  },
-  {
-    name: "get_issue",
-    description: "Get details of a specific issue by its number",
-    inputSchema: {
-      type: "object",
-      properties: {
-        owner: {
-          type: "string",
-          description: "Repository owner (username or organization)",
-        },
-        repo: {
-          type: "string",
-          description: "Repository name",
-        },
-        issue_number: {
-          type: "number",
-          description: "Issue number",
-        },
-      },
-      required: ["owner", "repo", "issue_number"],
-    },
-  },
-  {
-    name: "create_issue",
-    description: "Create a new issue in a GitHub repository",
-    inputSchema: {
-      type: "object",
-      properties: {
-        owner: {
-          type: "string",
-          description: "Repository owner (username or organization)",
-        },
-        repo: {
-          type: "string",
-          description: "Repository name",
-        },
-        title: {
-          type: "string",
-          description: "Issue title",
-        },
-        body: {
-          type: "string",
-          description: "Issue body/description",
-        },
-        labels: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-          description: "Array of label names to add to the issue",
-        },
-        assignees: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-          description: "Array of usernames to assign to the issue",
-        },
-      },
-      required: ["owner", "repo", "title"],
-    },
-  },
-  {
-    name: "update_issue",
-    description: "Update an existing issue",
-    inputSchema: {
-      type: "object",
-      properties: {
-        owner: {
-          type: "string",
-          description: "Repository owner (username or organization)",
-        },
-        repo: {
-          type: "string",
-          description: "Repository name",
-        },
-        issue_number: {
-          type: "number",
-          description: "Issue number",
-        },
-        title: {
-          type: "string",
-          description: "New issue title",
-        },
-        body: {
-          type: "string",
-          description: "New issue body/description",
-        },
-        state: {
-          type: "string",
-          enum: ["open", "closed"],
-          description: "New issue state",
-        },
-        labels: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-          description: "Array of label names (replaces existing labels)",
-        },
-        assignees: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-          description: "Array of usernames to assign (replaces existing assignees)",
-        },
-      },
-      required: ["owner", "repo", "issue_number"],
-    },
-  },
-  {
-    name: "add_issue_comment",
-    description: "Add a comment to an existing issue",
-    inputSchema: {
-      type: "object",
-      properties: {
-        owner: {
-          type: "string",
-          description: "Repository owner (username or organization)",
-        },
-        repo: {
-          type: "string",
-          description: "Repository name",
-        },
-        issue_number: {
-          type: "number",
-          description: "Issue number",
-        },
-        body: {
-          type: "string",
-          description: "Comment text",
-        },
-      },
-      required: ["owner", "repo", "issue_number", "body"],
-    },
-  },
-];
+async function githubApiRequest(endpoint: string, options: RequestInit = {}) {
+  const url = `${GITHUB_API_BASE}${endpoint}`;
+  const headers = {
+    'Accept': 'application/vnd.github+json',
+    'Authorization': `Bearer ${GITHUB_ACCESS_TOKEN}`,
+    'X-GitHub-Api-Version': GITHUB_API_VERSION,
+    ...options.headers,
+  };
 
-// Create MCP server
-const server = new Server(
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `GitHub API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+    );
+  }
+
+  return response.json();
+}
+
+const server = new McpServer({ name: 'demo-server', version: '1.0.0' });
+
+server.registerTool(
+  'add',
   {
-    name: "github-mcp-server",
-    version: "1.0.0",
+    title: 'Addition Tool',
+    description: 'Add two numbers',
+    inputSchema: { a: z.number(), b: z.number() },
+    outputSchema: { result: z.number() }
   },
-  {
-    capabilities: {
-      tools: {},
-    },
+  async ({ a, b }) => {
+    const output = { result: a + b };
+    return {
+      content: [], // If the Tool does not define an outputSchema, this field MUST be present in the result. For backwards compatibility, this field is always present, but it may be empty.
+      structuredContent: output
+    };
   }
 );
 
-// List available tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: TOOLS,
-  };
-});
-
-// Handle tool execution
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  try {
-    switch (name) {
-      case "list_issues": {
-        const { owner, repo, state = "open", labels, per_page = 30, page = 1 } = args as any;
-        
-        const response = await octokit.issues.listForRepo({
-          owner,
-          repo,
-          state,
-          labels,
-          per_page,
-          page,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "get_issue": {
-        const { owner, repo, issue_number } = args as any;
-        
-        const response = await octokit.issues.get({
-          owner,
-          repo,
-          issue_number,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "create_issue": {
-        const { owner, repo, title, body, labels, assignees } = args as any;
-        
-        const response = await octokit.issues.create({
-          owner,
-          repo,
-          title,
-          body,
-          labels,
-          assignees,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "update_issue": {
-        const { owner, repo, issue_number, title, body, state, labels, assignees } = args as any;
-        
-        const response = await octokit.issues.update({
-          owner,
-          repo,
-          issue_number,
-          title,
-          body,
-          state,
-          labels,
-          assignees,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "add_issue_comment": {
-        const { owner, repo, issue_number, body } = args as any;
-        
-        const response = await octokit.issues.createComment({
-          owner,
-          repo,
-          issue_number,
-          body,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(response.data, null, 2),
-            },
-          ],
-        };
-      }
-
-      default:
-        throw new Error(`Unknown tool: ${name}`);
+server.registerTool(
+  'list_issues',
+  {
+    title: 'List Issues',
+    description: 'List issues in a GitHub repository',
+    inputSchema: { owner: z.string(), repo: z.string() },
+    outputSchema: {
+      issues: z.array(z.object({
+        number: z.number(),
+        title: z.string(),
+        body: z.string().nullable(),
+        state: z.string(),
+        user: z.string(),
+        created_at: z.string(),
+        updated_at: z.string(),
+        html_url: z.string()
+      }))
     }
-  } catch (error: any) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error: ${error.message}\n${error.stack || ""}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
+  },
+  async ({ owner, repo }) => {
+    try {
+      // API Document: https://docs.github.com/en/rest/issues/issues#list-repository-issues
+      const endpoint = `/repos/${owner}/${repo}/issues?state=all&per_page=100`;
+      const data = await githubApiRequest(endpoint) as any[];
 
-// Start server
+      const issues = data.map((issue: any) => ({
+        number: issue.number,
+        title: issue.title,
+        body: issue.body || '',
+        state: issue.state,
+        user: issue.user?.login || 'unknown',
+        created_at: issue.created_at,
+        updated_at: issue.updated_at,
+        html_url: issue.html_url
+      }));
+
+      return {
+        content: [],
+        structuredContent: { issues }
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to fetch issues: ${errorMessage}`);
+    }
+  }
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("GitHub MCP Server running on stdio");
+  console.log("GitHub MCP started successfully");
 }
 
-main().catch((error) => {
-  console.error("Fatal error in main():", error);
-  process.exit(1);
-});
+await main().catch(console.error);
+
+export { server };
