@@ -12,7 +12,7 @@ const startStdio = async () => {
   const githubServer = new GitHubMCPServer();
   const transport = new StdioServerTransport();
   await githubServer.connect(transport);
-  console.log("GitHub MCP Server started successfully (stdio)");
+  console.error("GitHub MCP Server started successfully (stdio)");
 };
 
 const startStreamable = async () => {
