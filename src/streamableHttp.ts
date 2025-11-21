@@ -93,20 +93,35 @@ const handlePostRequest = async (ctx: Context, config?: Partial<GitHubConfig>) =
     return ctx.text('Missing raw request', 500);
   }
 
-  const sessionId = nodeReq.headers[PORT_HEADER];
+  try {
+    const sessionId = nodeReq.headers[PORT_HEADER];
 
-  if (sessionId && typeof sessionId === 'string') {
-    if (!sessionStore.has(sessionId)) {
-      return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
+    if (sessionId && typeof sessionId === 'string') {
+      if (!sessionStore.has(sessionId)) {
+        return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
+      }
+      const context = sessionStore.get(sessionId)!;
+      await context.transport.handleRequest(nodeReq, nodeRes);
+      return responseAlreadySent();
     }
-    const context = sessionStore.get(sessionId)!;
+
+    const context = await createSessionContext(config);
     await context.transport.handleRequest(nodeReq, nodeRes);
     return responseAlreadySent();
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+    if (!nodeRes.headersSent) {
+      return ctx.json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Internal server error'
+        },
+        id: null
+      }, 500);
+    }
+    return responseAlreadySent();
   }
-
-  const context = await createSessionContext(config);
-  await context.transport.handleRequest(nodeReq, nodeRes);
-  return responseAlreadySent();
 };
 
 const handleReadRequest = async (ctx: Context) => {
@@ -116,14 +131,29 @@ const handleReadRequest = async (ctx: Context) => {
     return ctx.text('Missing raw request', 500);
   }
 
-  const sessionId = nodeReq.headers[PORT_HEADER];
-  if (!sessionId || typeof sessionId !== 'string' || !sessionStore.has(sessionId)) {
-    return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
-  }
+  try {
+    const sessionId = nodeReq.headers[PORT_HEADER];
+    if (!sessionId || typeof sessionId !== 'string' || !sessionStore.has(sessionId)) {
+      return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
+    }
 
-  const context = sessionStore.get(sessionId)!;
-  await context.transport.handleRequest(nodeReq, nodeRes);
-  return responseAlreadySent();
+    const context = sessionStore.get(sessionId)!;
+    await context.transport.handleRequest(nodeReq, nodeRes);
+    return responseAlreadySent();
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+    if (!nodeRes.headersSent) {
+      return ctx.json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Internal server error'
+        },
+        id: null
+      }, 500);
+    }
+    return responseAlreadySent();
+  }
 };
 
 const handleDeleteRequest = async (ctx: Context) => {
@@ -133,14 +163,29 @@ const handleDeleteRequest = async (ctx: Context) => {
     return ctx.text('Missing raw request', 500);
   }
 
-  const sessionId = nodeReq.headers[PORT_HEADER];
-  if (!sessionId || typeof sessionId !== 'string' || !sessionStore.has(sessionId)) {
-    return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
-  }
+  try {
+    const sessionId = nodeReq.headers[PORT_HEADER];
+    if (!sessionId || typeof sessionId !== 'string' || !sessionStore.has(sessionId)) {
+      return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
+    }
 
-  const context = sessionStore.get(sessionId)!;
-  await context.transport.handleRequest(nodeReq, nodeRes);
-  return responseAlreadySent();
+    const context = sessionStore.get(sessionId)!;
+    await context.transport.handleRequest(nodeReq, nodeRes);
+    return responseAlreadySent();
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+    if (!nodeRes.headersSent) {
+      return ctx.json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Internal server error'
+        },
+        id: null
+      }, 500);
+    }
+    return responseAlreadySent();
+  }
 };
 
 const attachNodeHandle = (request: Request, incoming: NodeRequest, outgoing: NodeResponse) => {
@@ -161,7 +206,7 @@ const createCors = () => cors({
 });
 
 export async function startStreamableHttpServer(options?: StreamableHttpOptions): Promise<ReturnType<typeof createAdaptorServer>> {
-  const port = options?.port ?? Number(process.env.STREAMABLE_HTTP_PORT) ?? Number(process.env.PORT) ?? 3001;
+  const port = options?.port ?? (Number(process.env.STREAMABLE_HTTP_PORT) || Number(process.env.PORT) || 3001);
   const path = options?.path ?? '/mcp';
   const app = new Hono();
   app.use('*', createCors());
