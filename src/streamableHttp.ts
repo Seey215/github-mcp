@@ -70,7 +70,13 @@ const createSessionContext = async (config?: Partial<GitHubConfig>): Promise<Ses
     if (sid && sessionStore.get(sid) === context) {
       sessionStore.delete(sid);
     }
-    await context.server.close();
+    // Avoid infinite recursion: transport.close() calls onclose, which calls server.close(), which might close transport again
+    // The SDK handles closing the transport when server closes, so we just need to ensure cleanup happens
+    try {
+      await context.server.close();
+    } catch (e) {
+      // Ignore errors during close if already closed
+    }
   };
 
   context.transport = transport;
