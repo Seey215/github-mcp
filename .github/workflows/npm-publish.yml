@@ -1,0 +1,81 @@
+name: NPM Publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Check and Bump Version
+        id: check_version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+            
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const currentVer = pkg.version;
+            console.log('Current version:', currentVer);
+            
+            let prevVer = '0.0.0';
+            try {
+              // Get the package.json content of the last commit.
+              prevVer = JSON.parse(execSync('git show HEAD~1:package.json', { encoding: 'utf8' })).version;
+              console.log('Previous version:', prevVer);
+            } catch (e) {
+              console.log('Could not get previous version, treating as 0.0.0');
+            }
+            
+            if (currentVer === prevVer) {
+              console.log('Version matched previous commit. Auto-bumping patch version...');
+              execSync('npm version patch --no-git-tag-version');
+              const newVer = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+              console.log('Bumped to:', newVer);
+              fs.appendFileSync(process.env.GITHUB_ENV, 'VERSION_BUMPED=true\n');
+            } else {
+              console.log('Version differs from previous commit. Using current version.');
+              fs.appendFileSync(process.env.GITHUB_ENV, 'VERSION_BUMPED=false\n');
+            }
+          "
+
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push changes
+        if: env.VERSION_BUMPED == 'true'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add package.json
+          git commit -m "chore: bump version to $(node -p "require('./package.json').version") [skip ci]"
+          git push
