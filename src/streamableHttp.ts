@@ -46,6 +46,9 @@ const nodeResponseFrom = (req: Request | undefined): NodeResponse | undefined =>
 const sessionStore = new Map<string, SessionContext>();
 const PORT_HEADER = 'mcp-session-id';
 
+// Temporary storage for OAuth flow
+const tempCodeMap = new Map<string, string>();
+
 const createSessionContext = async (config?: Partial<GitHubConfig>): Promise<SessionContext> => {
   const server = new GitHubMCPServer(config);
   const context: SessionContext = { server, transport: null! };
@@ -99,9 +102,30 @@ const handlePostRequest = async (ctx: Context, config?: Partial<GitHubConfig>) =
     return ctx.text('Missing raw request', 500);
   }
 
-  try {
-    const sessionId = nodeReq.headers[PORT_HEADER];
+  // Check for Authorization header
+  const authHeader = nodeReq.headers['authorization'];
+  let token = config?.token;
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  }
 
+  // If no token provided and no session ID (initial request), return 401
+  const sessionId = nodeReq.headers[PORT_HEADER];
+  if (!token && !sessionId && !process.env.GITHUB_ACCESS_TOKEN) {
+    const port = Number(process.env.STREAMABLE_HTTP_PORT) || Number(process.env.PORT) || 3001;
+    const hostname = process.env.HOSTNAME || 'localhost';
+    const metadataUrl = `http://${hostname}:${port}/.well-known/oauth-protected-resource`;
+    
+    return new Response('Unauthorized', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': `Bearer realm="mcp", resource_metadata="${metadataUrl}"`
+      }
+    });
+  }
+
+  try {
     if (sessionId && typeof sessionId === 'string') {
       if (!sessionStore.has(sessionId)) {
         return ctx.json(streamableError('Bad Request: No valid session ID provided', -32000), 400);
@@ -111,7 +135,12 @@ const handlePostRequest = async (ctx: Context, config?: Partial<GitHubConfig>) =
       return responseAlreadySent();
     }
 
-    const context = await createSessionContext(config);
+    const sessionConfig = { ...config };
+    if (token) {
+      sessionConfig.token = token;
+    }
+
+    const context = await createSessionContext(sessionConfig);
     await context.transport.handleRequest(nodeReq, nodeRes);
     return responseAlreadySent();
   } catch (error) {
@@ -207,8 +236,8 @@ const attachNodeHandle = (request: Request, incoming: NodeRequest, outgoing: Nod
 const createCors = () => cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Mcp-Session-Id', 'Last-Event-Id', 'Mcp-Protocol-Version'],
-  exposeHeaders: ['mcp-session-id', 'last-event-id', 'mcp-protocol-version']
+  allowHeaders: ['Content-Type', 'Mcp-Session-Id', 'Last-Event-Id', 'Mcp-Protocol-Version', 'Authorization'],
+  exposeHeaders: ['mcp-session-id', 'last-event-id', 'mcp-protocol-version', 'WWW-Authenticate']
 });
 
 export async function startStreamableHttpServer(options?: StreamableHttpOptions): Promise<ReturnType<typeof createAdaptorServer>> {
@@ -216,6 +245,167 @@ export async function startStreamableHttpServer(options?: StreamableHttpOptions)
   const path = options?.path ?? '/mcp';
   const app = new Hono();
   app.use('*', createCors());
+
+  const getMetadata = () => {
+    const hostname = process.env.HOSTNAME || 'localhost';
+    const baseUrl = `http://${hostname}:${port}`;
+    return {
+      issuer: baseUrl,
+      authorization_endpoint: `${baseUrl}/auth/authorize`,
+      token_endpoint: `${baseUrl}/auth/token`,
+      registration_endpoint: `${baseUrl}/auth/register`,
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code"],
+      token_endpoint_auth_methods_supported: ["none"],
+      scopes_supported: ["repo", "user"]
+    };
+  };
+
+  app.get('/.well-known/oauth-protected-resource', (c) => c.json(getMetadata()));
+  app.get('/.well-known/oauth-authorization-server', (c) => c.json(getMetadata()));
+
+  app.post('/auth/register', async (c) => {
+    const body = await c.req.json();
+    const redirectUris = body.redirect_uris;
+    
+    return c.json({
+      client_id: "mcp-inspector",
+      client_secret: "mcp-inspector-secret",
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_secret_expires_at: 0,
+      redirect_uris: redirectUris || [],
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code"],
+      response_types: ["code"]
+    });
+  });
+
+  app.get('/auth/authorize', (c) => {
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    if (!clientId) return c.text('GITHUB_CLIENT_ID not configured', 500);
+    
+    const redirectUri = c.req.query('redirect_uri');
+    const state = c.req.query('state');
+    
+    if (!redirectUri || !state) {
+      return c.text('Missing redirect_uri or state', 400);
+    }
+
+    // Encode client state to pass through GitHub
+    const serverState = Buffer.from(JSON.stringify({ redirectUri, state })).toString('base64');
+    const serverRedirectUri = process.env.GITHUB_REDIRECT_URI || `http://${options?.hostname || 'localhost'}:${port}/auth/callback`;
+    
+    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=repo,user&redirect_uri=${encodeURIComponent(serverRedirectUri)}&state=${serverState}`;
+    return c.redirect(authUrl);
+  });
+
+  app.get('/auth/callback', async (c) => {
+    const code = c.req.query('code');
+    const state = c.req.query('state');
+    
+    if (!code || !state) return c.text('Missing code or state', 400);
+
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) return c.text('OAuth not configured', 500);
+
+    try {
+      // Decode state to get client redirect URI
+      let decodedState;
+      try {
+        decodedState = JSON.parse(Buffer.from(state, 'base64').toString());
+      } catch (e) {
+        console.error('Failed to decode state:', state);
+        return c.text('Invalid state parameter', 400);
+      }
+      
+      const { redirectUri: clientRedirectUri, state: clientState } = decodedState;
+
+      console.log('Exchanging code for token with GitHub...');
+      const response = await fetch('https://github.com/login/oauth/access_token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'GitHub-MCP-Server'
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('GitHub API error response:', response.status, text);
+        return c.text(`GitHub API error: ${response.status} ${text}`, 500);
+      }
+
+      const data = await response.json() as any;
+      if (data.error) {
+        console.error('GitHub OAuth error:', data);
+        return c.text(`OAuth error: ${data.error_description || data.error}`, 400);
+      }
+
+      const accessToken = data.access_token;
+      if (accessToken) {
+        // Generate a temporary code for the client to exchange
+        const tempCode = randomUUID();
+        tempCodeMap.set(tempCode, accessToken);
+        
+        // Expire temp code after 1 minute
+        setTimeout(() => tempCodeMap.delete(tempCode), 60000);
+
+        const redirectUrl = `${clientRedirectUri}?code=${tempCode}&state=${clientState}`;
+        return c.redirect(redirectUrl);
+      } else {
+        return c.text('Failed to retrieve access token', 500);
+      }
+    } catch (error: any) {
+      console.error('Auth callback error:', error);
+      return c.text(`Error: ${error.message || error} ${error.cause ? `(Cause: ${error.cause})` : ''}`, 500);
+    }
+  });
+
+  app.post('/auth/token', async (c) => {
+    let code: string | undefined;
+    
+    try {
+      const contentType = c.req.header('content-type') || '';
+      console.log(`Token request content-type: ${contentType}`);
+      
+      if (contentType.includes('application/json')) {
+        const body = await c.req.json();
+        code = body.code;
+      } else {
+        const body = await c.req.parseBody();
+        code = body['code'] as string;
+      }
+    } catch (e) {
+      console.error('Error parsing token request body:', e);
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    
+    console.log(`Token request for code: ${code}`);
+    
+    if (!code || !tempCodeMap.has(code)) {
+      console.error(`Invalid grant for code: ${code}`);
+      return c.json({ error: 'invalid_grant' }, 400);
+    }
+
+    const accessToken = tempCodeMap.get(code);
+    tempCodeMap.delete(code); // One-time use
+
+    return c.json({
+      access_token: accessToken,
+      token_type: 'Bearer',
+      scope: 'repo,user',
+      expires_in: 28800 // 8 hours (approx)
+    });
+  });
+
   app.post(path, async (ctx) => handlePostRequest(ctx, options?.config));
   app.get(path, async (ctx) => handleReadRequest(ctx));
   app.delete(path, async (ctx) => handleDeleteRequest(ctx));

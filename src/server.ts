@@ -35,6 +35,14 @@ export class GitHubMCPServer {
   }
 
   /**
+   * Update the GitHub Access Token
+   * @param token New access token
+   */
+  public setToken(token: string): void {
+    this.config.token = token;
+  }
+
+  /**
    * Execute GitHub API request
    * @param endpoint API endpoint path
    * @param options fetch request options
@@ -46,7 +54,7 @@ export class GitHubMCPServer {
     if (!this.config.token) {
       throw new Error(
         'GitHub Access Token is required for API requests. ' +
-        'Please set GITHUB_ACCESS_TOKEN environment variable or provide token in constructor.'
+        'Please ensure your client is authenticated.'
       );
     }
 
