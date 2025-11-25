@@ -35,14 +35,6 @@ export class GitHubMCPServer {
   }
 
   /**
-   * Update the GitHub Access Token
-   * @param token New access token
-   */
-  public setToken(token: string): void {
-    this.config.token = token;
-  }
-
-  /**
    * Execute GitHub API request
    * @param endpoint API endpoint path
    * @param options fetch request options

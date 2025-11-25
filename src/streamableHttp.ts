@@ -103,7 +103,7 @@ const handlePostRequest = async (ctx: Context, config?: Partial<GitHubConfig>) =
   }
 
   // Check for Authorization header
-  const authHeader = nodeReq.headers['authorization'];
+  const authHeader = ctx.req.header('Authorization');
   let token = config?.token;
   
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -111,8 +111,8 @@ const handlePostRequest = async (ctx: Context, config?: Partial<GitHubConfig>) =
   }
 
   // If no token provided and no session ID (initial request), return 401
-  const sessionId = nodeReq.headers[PORT_HEADER];
-  if (!token && !sessionId && !process.env.GITHUB_ACCESS_TOKEN) {
+  const sessionId = ctx.req.header(PORT_HEADER);
+  if (!token && !sessionId) {
     const port = Number(process.env.STREAMABLE_HTTP_PORT) || Number(process.env.PORT) || 3001;
     const hostname = process.env.HOSTNAME || 'localhost';
     const metadataUrl = `http://${hostname}:${port}/.well-known/oauth-protected-resource`;
@@ -236,7 +236,7 @@ const attachNodeHandle = (request: Request, incoming: NodeRequest, outgoing: Nod
 const createCors = () => cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Mcp-Session-Id', 'Last-Event-Id', 'Mcp-Protocol-Version', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Mcp-Session-Id', 'Last-Event-Id', 'Mcp-Protocol-Version', 'Authorization', 'Access-Control-Request-Headers', 'Access-Control-Request-Method'],
   exposeHeaders: ['mcp-session-id', 'last-event-id', 'mcp-protocol-version', 'WWW-Authenticate']
 });
 
@@ -246,7 +246,7 @@ export async function startStreamableHttpServer(options?: StreamableHttpOptions)
   const app = new Hono();
   app.use('*', createCors());
 
-  const getMetadata = () => {
+  const getAuthServerMetadata = () => {
     const hostname = process.env.HOSTNAME || 'localhost';
     const baseUrl = `http://${hostname}:${port}`;
     return {
@@ -261,8 +261,18 @@ export async function startStreamableHttpServer(options?: StreamableHttpOptions)
     };
   };
 
-  app.get('/.well-known/oauth-protected-resource', (c) => c.json(getMetadata()));
-  app.get('/.well-known/oauth-authorization-server', (c) => c.json(getMetadata()));
+  const getProtectedResourceMetadata = () => {
+    const hostname = process.env.HOSTNAME || 'localhost';
+    const baseUrl = `http://${hostname}:${port}`;
+    return {
+      resource: `${baseUrl}${path}`,
+      authorization_servers: [baseUrl],
+      scopes_supported: ["repo", "user"]
+    };
+  };
+
+  app.get('/.well-known/oauth-protected-resource', (c) => c.json(getProtectedResourceMetadata()));
+  app.get('/.well-known/oauth-authorization-server', (c) => c.json(getAuthServerMetadata()));
 
   app.post('/auth/register', async (c) => {
     const body = await c.req.json();
@@ -270,7 +280,6 @@ export async function startStreamableHttpServer(options?: StreamableHttpOptions)
     
     return c.json({
       client_id: "mcp-inspector",
-      client_secret: "mcp-inspector-secret",
       client_id_issued_at: Math.floor(Date.now() / 1000),
       client_secret_expires_at: 0,
       redirect_uris: redirectUris || [],
@@ -374,7 +383,6 @@ export async function startStreamableHttpServer(options?: StreamableHttpOptions)
     
     try {
       const contentType = c.req.header('content-type') || '';
-      console.log(`Token request content-type: ${contentType}`);
       
       if (contentType.includes('application/json')) {
         const body = await c.req.json();
@@ -388,10 +396,7 @@ export async function startStreamableHttpServer(options?: StreamableHttpOptions)
       return c.json({ error: 'invalid_request' }, 400);
     }
     
-    console.log(`Token request for code: ${code}`);
-    
     if (!code || !tempCodeMap.has(code)) {
-      console.error(`Invalid grant for code: ${code}`);
       return c.json({ error: 'invalid_grant' }, 400);
     }
 
