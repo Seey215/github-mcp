@@ -110,20 +110,9 @@ const handlePostRequest = async (ctx: Context, config?: Partial<GitHubConfig>) =
     token = authHeader.substring(7);
   }
 
-  // If no token provided and no session ID (initial request), return 401
+  // Allow unauthenticated connections for metadata operations (listTools, etc.)
+  // Authorization is checked at tool execution time for tools that require it
   const sessionId = ctx.req.header(PORT_HEADER);
-  if (!token && !sessionId) {
-    const port = Number(process.env.STREAMABLE_HTTP_PORT) || Number(process.env.PORT) || 3001;
-    const hostname = process.env.HOSTNAME || 'localhost';
-    const metadataUrl = `http://${hostname}:${port}/.well-known/oauth-protected-resource`;
-    
-    return new Response('Unauthorized', {
-      status: 401,
-      headers: {
-        'WWW-Authenticate': `Bearer realm="mcp", resource_metadata="${metadataUrl}"`
-      }
-    });
-  }
 
   try {
     if (sessionId && typeof sessionId === 'string') {

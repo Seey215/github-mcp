@@ -131,6 +131,13 @@ export class GitHubMCPServer {
         }
       },
       async ({ owner, repo }) => {
+        // Check authorization before making API request
+        if (!this.config.token) {
+          throw new Error(
+            'This tool requires authentication. Please complete OAuth authorization first.'
+          );
+        }
+
         try {
           // API Document: https://docs.github.com/en/rest/issues/issues#list-repository-issues
           const endpoint = `/repos/${owner}/${repo}/issues?state=all&per_page=100`;
